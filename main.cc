@@ -136,9 +136,7 @@ int main() {
         shader.use();
         draw_grid_xz(shader, 10.f, 1.f);
 
-        glm::vec3 pos(0, 10, 10);
-        glm::vec3 tar(0, 0, 0);
-        glm::mat4 view = glm::lookAt(pos, tar + control.front_, control.up_);
+        glm::mat4 view = control.get_view();
 
         float aspect = width / height;
         float zNear = 0.5;

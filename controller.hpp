@@ -14,7 +14,13 @@ class Controller {
   public:
     Controller()
         : front_(glm::vec3(0, 0, 0)), right_(glm::vec3(0, 0, 0)), up_(glm::vec3(0, 1, 0)),
-          zoom_(FOV), first_click_(true){};
+          zoom_(FOV), first_click_(true) {
+        pos_ = glm::vec3(0, 10, 10);
+        tar_ = glm::vec3(0, 0, 0);
+
+        distance_ = std::sqrt(std::pow(pos_.x - tar_.x, 2) + std::pow(pos_.y - tar_.y, 2) +
+                              std::pow(pos_.z - tar_.z, 2));
+    };
 
     void handle_mouse_button(const float &xpos, const float &ypos) {
         last_x_ = static_cast<float>(xpos);
@@ -49,6 +55,8 @@ class Controller {
         front_ = glm::normalize(front_);
         right_ = glm::normalize(glm::cross(front_, glm::vec3(0, 1, 0)));
         up_ = glm::normalize(glm::cross(right_, front_));
+
+        pos_ = tar_ - (glm::vec3(distance_, distance_, distance_) * front_);
     }
 
     void handle_mouse_scroll(const float &yoffset) {
@@ -57,14 +65,21 @@ class Controller {
         zoom_ = std::max(zoom_, 1.f);
     }
 
+    glm::mat4 get_view() const { return glm::lookAt(pos_, tar_ + front_, up_); };
+
   public:
+    float zoom_;
+
+  private:
+    glm::vec3 pos_;
+    glm::vec3 tar_;
+
+    double distance_;
+
     glm::vec3 front_;
     glm::vec3 right_;
     glm::vec3 up_;
 
-    float zoom_;
-
-  private:
     bool first_click_;
 
     float last_x_;

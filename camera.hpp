@@ -68,9 +68,6 @@ class Camera {
         return frustum_data;
     }
 
-    glm::mat4 get_view() const { return mat_view_; };
-    glm::mat4 get_proj() const { return mat_proj_; };
-
   private:
     void calc_front(const double &distance) {
         // reference --> https://slideplayer.com/slide/16393785/
