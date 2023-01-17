@@ -4,22 +4,90 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <json/json.hpp>
+
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <vector>
 
+#include "camera.hpp"
+#include "controller.hpp"
 #include "shader.hpp"
 
 using namespace std;
+using json = nlohmann::json;
 
-GLuint vao, vbo;
+GLuint vao[2], vbo[2];
+vector<GLfloat> line, point;
 
-const float width = 495;
-const float height = 495;
+Controller control;
+
+const float width = 600;
+const float height = 600;
 
 void draw_grid_xz(Shader &shader, float size, float step);
-void draw_frustum(glm::mat4 view, glm::mat4 proj);
+void draw_camera(Camera cam, glm::vec3 cam_color);
+
+void bind_line_opengl();
+void bind_point_opengl();
+
+void mouse_button_callback(GLFWwindow *window, int button, int action, int mods) {
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+        double xpos, ypos;
+        glfwGetCursorPos(window, &xpos, &ypos);
+        control.handle_mouse_button(xpos, ypos);
+    }
+}
+
+void mouse_cursor_callback(GLFWwindow *window, double xpos, double ypos) {
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+        control.handle_mouse_movement(xpos, ypos);
+}
+
+void mouse_scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
+    control.handle_mouse_scroll(yoffset);
+}
+
+vector<Camera> read_config(const std::string file) {
+    ifstream file_handler(file);
+    if (!file_handler.is_open()) {
+        cerr << "reading config json fail!" << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    string json_data;
+    std::ostringstream json_oss;
+    json_oss << file_handler.rdbuf();
+    json_data = json_oss.str();
+    file_handler.close();
+
+    bool is_first = true;
+    glm::vec3 offset;
+    vector<Camera> res;
+    for (auto &j : json::parse(json_data)) {
+        if (is_first) {
+            offset = glm::vec3(j["xyz"][0], j["xyz"][2], j["xyz"][1]);
+            is_first = false;
+        }
+        glm::vec3 xyz(j["xyz"][0], j["xyz"][2], j["xyz"][1]);
+        glm::vec3 pry(j["pry"][0], j["pry"][1], j["pry"][2]);
+        res.push_back(Camera(j["cam-id"], xyz - offset, pry, j["fov"], j["width"], j["height"],
+                             j["near"], j["far"]));
+    }
+    return res;
+}
 
 int main() {
+    vector<Camera> cams = read_config("../config/object.json");
+    if (cams.empty()) {
+        cerr << "no camera object!" << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    /**********************************************************/
+    // OpenGL initialize
+    /**********************************************************/
     // GLFW Init
     if (!glfwInit()) {
         cerr << "GLFW init fail!" << endl;
@@ -39,6 +107,9 @@ int main() {
     }
 
     glfwMakeContextCurrent(window);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
+    glfwSetCursorPosCallback(window, mouse_cursor_callback);
+    glfwSetScrollCallback(window, mouse_scroll_callback);
 
     // Viewport 만들기
     int framebuf_width, framebuf_height;
@@ -52,12 +123,12 @@ int main() {
     }
 
     /**********************************************************/
-    // main
+    // run
     /**********************************************************/
     Shader shader("../shaders/draw_point.glsl");
 
-    glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &vbo);
+    glGenVertexArrays(2, vao);
+    glGenBuffers(2, vbo);
 
     while (!glfwWindowShouldClose(window)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -67,36 +138,69 @@ int main() {
 
         glm::vec3 pos(0, 10, 10);
         glm::vec3 tar(0, 0, 0);
-        glm::mat4 view = glm::lookAt(pos, tar, glm::vec3(0, 1, 0));
+        glm::mat4 view = glm::lookAt(pos, tar + control.front_, control.up_);
 
         float aspect = width / height;
         float zNear = 0.5;
         float zFar = 1000;
 
-        glm::mat4 proj = glm::perspective(glm::radians(45.f), aspect, zNear, zFar);
+        glm::mat4 proj = glm::perspective(glm::radians(control.zoom_), aspect, zNear, zFar);
         glm::mat4 mode = glm::mat4(1.f);
 
         glm::mat4 mvp = proj * view * mode;
 
         shader.set_mat4("mvp", mvp);
 
-        draw_frustum(view, proj);
+        for (const auto &cam : cams)
+            draw_camera(cam, glm::vec3(1, 0.647059, 0));
+
+        bind_line_opengl();
+        bind_point_opengl();
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-
-    glDeleteVertexArrays(1, &vao);
-    glDeleteBuffers(1, &vbo);
+    glDeleteVertexArrays(1, vao);
+    glDeleteBuffers(1, vbo);
 
     glfwTerminate();
 
     return EXIT_SUCCESS;
 }
 
-void draw_grid_xz(Shader &shader, float size, float step) {
-    vector<GLfloat> grid_data;
+void bind_line_opengl() {
+    glBindVertexArray(vao[0]);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
 
+    glBufferData(GL_ARRAY_BUFFER, line.size() * sizeof(GLfloat), &line.front(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(vao[0]);
+    glDrawArrays(GL_LINES, 0, line.size() / 6);
+    glBindVertexArray(0);
+}
+
+void bind_point_opengl() {
+    glBindVertexArray(vao[1]);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo[1]);
+
+    glBufferData(GL_ARRAY_BUFFER, point.size() * sizeof(GLfloat), &point.front(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glPointSize(15);
+    glDrawArrays(GL_POINTS, 0, point.size() / 6);
+    glBindVertexArray(0);
+}
+
+void draw_grid_xz(Shader &shader, float size, float step) {
     for (float i = step; i <= size; i += step) {
         vector<GLfloat> v1{-size, 0, i, 1.f, 1.f, 1.f,
                            size,  0, i, 1.f, 1.f, 1.f}; // lines parallel to X-axis
@@ -108,89 +212,30 @@ void draw_grid_xz(Shader &shader, float size, float step) {
         vector<GLfloat> v4{-i, 0, -size, 1.f, 1.f, 1.f,
                            -i, 0, size,  1.f, 1.f, 1.f}; // lines parallel to Z-axis
 
-        grid_data.insert(grid_data.end(), v1.begin(), v1.end());
-        grid_data.insert(grid_data.end(), v2.begin(), v2.end());
-        grid_data.insert(grid_data.end(), v3.begin(), v3.end());
-        grid_data.insert(grid_data.end(), v4.begin(), v4.end());
+        line.insert(line.end(), v1.begin(), v1.end());
+        line.insert(line.end(), v2.begin(), v2.end());
+        line.insert(line.end(), v3.begin(), v3.end());
+        line.insert(line.end(), v4.begin(), v4.end());
     }
 
     // x-axis
     vector<GLfloat> vx{0, 0, 0, 1.f, 0, 0, size,  0, 0, 1.f, 0,   0,
                        0, 0, 0, 1.f, 0, 0, -size, 0, 0, 1.f, 1.f, 1.f};
-    grid_data.insert(grid_data.end(), vx.begin(), vx.end());
+    line.insert(line.end(), vx.begin(), vx.end());
 
     // z-axis
     vector<GLfloat> vy{0, 0, 0, 0, 0, 1.f, 0, 0, size,  0,   0,   1.f,
                        0, 0, 0, 0, 0, 1.f, 0, 0, -size, 1.f, 1.f, 1.f};
-    grid_data.insert(grid_data.end(), vy.begin(), vy.end());
-
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-    glBufferData(GL_ARRAY_BUFFER, grid_data.size() * sizeof(GLfloat), &grid_data.front(),
-                 GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glDrawArrays(GL_LINES, 0, grid_data.size());
-    glBindVertexArray(0);
+    line.insert(line.end(), vy.begin(), vy.end());
 }
 
-void draw_frustum(glm::mat4 view, glm::mat4 proj) {
-    // reference :
-    // https://gamedev.stackexchange.com/questions/183196/calculating-directional-shadow-map-using-camera-frustum
+void draw_camera(Camera cam, glm::vec3 cam_color) {
+    vector<GLfloat> pose = cam.get_pose();
+    pose.push_back(cam_color.x);
+    pose.push_back(cam_color.y);
+    pose.push_back(cam_color.z);
+    point.insert(point.end(), pose.begin(), pose.end());
 
-    vector<glm::vec4> clip{glm::vec4(-1, -1, -1, 1), glm::vec4(1, -1, -1, 1),
-                           glm::vec4(-1, 1, -1, 1),  glm::vec4(1, 1, -1, 1),
-                           glm::vec4(-1, -1, 1, 1),  glm::vec4(1, -1, 1, 1),
-                           glm::vec4(-1, 1, 1, 1),   glm::vec4(1, 1, 1, 1)};
-
-    glm::mat4 inv_view = glm::inverse(view);
-    glm::mat4 inv_proj = glm::inverse(proj);
-
-    vector<glm::vec4> pt_worlds;
-    for (size_t i = 0; i < clip.size(); i++) {
-        glm::vec4 pt_view = inv_proj * clip[i];
-        clip[i] /= clip[i][3];
-        glm::vec4 pt_world = inv_view * pt_view;
-        pt_worlds.push_back(pt_world);
-    }
-
-    int line_indices[12][2] = {
-        {0, 1}, {0, 2}, {0, 4}, {1, 3}, {1, 5}, {2, 3},
-        {2, 6}, {3, 7}, {4, 5}, {4, 6}, {5, 7}, {6, 7},
-    };
-    vector<GLfloat> frustum_data;
-    for (int i = 0; i < 12; i++) {
-        vector<GLfloat> line{pt_worlds[line_indices[i][0]].x,
-                             pt_worlds[line_indices[i][0]].y,
-                             pt_worlds[line_indices[i][0]].z,
-                             0,
-                             1.f,
-                             0,
-                             pt_worlds[line_indices[i][1]].x,
-                             pt_worlds[line_indices[i][1]].y,
-                             pt_worlds[line_indices[i][1]].z,
-                             0,
-                             1.f,
-                             0};
-        frustum_data.insert(frustum_data.end(), line.begin(), line.end());
-    }
-
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-    glBufferData(GL_ARRAY_BUFFER, frustum_data.size() * sizeof(GLfloat), &frustum_data.front(),
-                 GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glDrawArrays(GL_LINES, 0, frustum_data.size());
-    glBindVertexArray(0);
+    vector<GLfloat> frustum = cam.get_frustum();
+    line.insert(line.end(), frustum.begin(), frustum.end());
 }

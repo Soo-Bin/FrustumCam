@@ -11,7 +11,6 @@ out vec3 in_color;
 
 void main()
 {
-    gl_PointSize = 1;
     gl_Position = mvp * vec4(pos, 1.0);
     in_color = col;
 }
