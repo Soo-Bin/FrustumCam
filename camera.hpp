@@ -33,14 +33,12 @@ class Camera {
                                     glm::vec4(-1, -1, 1, 1),  glm::vec4(1, -1, 1, 1),
                                     glm::vec4(-1, 1, 1, 1),   glm::vec4(1, 1, 1, 1)};
 
-        glm::mat4 inv_view = glm::inverse(mat_view_);
-        glm::mat4 inv_proj = glm::inverse(mat_proj_);
+        glm::mat4 inv_mvp = glm::inverse(mat_proj_ * mat_view_);
 
         std::vector<glm::vec4> pt_worlds;
         for (size_t i = 0; i < clip.size(); i++) {
-            glm::vec4 pt_view = inv_proj * clip[i];
-            clip[i] /= clip[i][3];
-            glm::vec4 pt_world = inv_view * pt_view;
+            glm::vec4 pt_world = inv_mvp * clip[i];
+            pt_world /= pt_world[3];
             pt_worlds.push_back(pt_world);
         }
 
@@ -64,7 +62,6 @@ class Camera {
                                       0};
             frustum_data.insert(frustum_data.end(), line.begin(), line.end());
         }
-
         return frustum_data;
     }
 
