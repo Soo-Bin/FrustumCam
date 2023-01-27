@@ -7,17 +7,27 @@
 
 #include <algorithm>
 
-const float FOV = 45.f;
-const float SENSITIVITY = 0.1f;
-const float EPSILON = 0.00001f;
+constexpr float FOV = 45.f;
+constexpr float SENSITIVITY = 0.1f;
+constexpr float EPSILON = 0.00001f;
+constexpr float SPEED = 0.05f;
+
+constexpr int WIDTH = 600;
+constexpr int HEIGHT = 600;
+
+constexpr float ZNEAR = 0.1f;
+constexpr float ZFAR = 1000.f;
 
 class Controller {
   public:
-    Controller()
-        : forward_(glm::vec3(0, 0, 0)), left_(glm::vec3(0, 0, 0)), up_(glm::vec3(0, 1, 0)),
-          zoom_(FOV) {
+    Controller() : zoom_(FOV) {
         pos_ = glm::vec3(0, 10, 10);
         tar_ = glm::vec3(0, 0, 0);
+
+        forward_ = tar_ - pos_;
+        forward_ = glm::normalize(forward_);
+        left_ = glm::normalize(glm::cross(forward_, glm::vec3(0, 1, 0)));
+        up_ = glm::normalize(glm::cross(left_, forward_));
 
         distance_ = std::sqrt(std::pow(pos_.x - tar_.x, 2) + std::pow(pos_.y - tar_.y, 2) +
                               std::pow(pos_.z - tar_.z, 2));
@@ -51,9 +61,11 @@ class Controller {
     void handle_mouse_button(const float &xpos, const float &ypos) {
         last_x_ = static_cast<float>(xpos);
         last_y_ = static_cast<float>(ypos);
+
+        last_world_ = get_world_pos(xpos, ypos);
     }
 
-    void handle_mouse_movement(const float &xpos, const float &ypos) {
+    void handle_mouse_rotate(const float &xpos, const float &ypos) {
         float xoffset = last_x_ - xpos;
         float yoffset = ypos - last_y_;
 
@@ -77,7 +89,19 @@ class Controller {
         left_ = glm::normalize(glm::cross(forward_, glm::vec3(0, 1, 0)));
         up_ = glm::normalize(glm::cross(left_, forward_));
 
-        pos_ = tar_ + (glm::vec3(distance_, distance_, distance_) * forward_);
+        pos_ = tar_ + distance_ * forward_;
+    }
+
+    void handle_mouse_transpose(const float &xpos, const float &ypos) {
+        glm::vec3 world_pos = get_world_pos(xpos, ypos);
+
+        tar_.x += SPEED * (last_world_ - world_pos).x;
+        tar_.z += SPEED * (last_world_ - world_pos).z;
+
+        pos_.x += SPEED * (last_world_ - world_pos).x;
+        pos_.z += SPEED * (last_world_ - world_pos).z;
+
+        last_world_ = world_pos;
     }
 
     void handle_mouse_scroll(const float &yoffset) {
@@ -86,16 +110,36 @@ class Controller {
         zoom_ = std::max(zoom_, 1.f);
     }
 
+    glm::mat4 get_model() const { return glm::mat4(1.f); };
     glm::mat4 get_view() const { return glm::lookAt(pos_, tar_ + forward_, up_); };
+    glm::mat4 get_projection() const {
+        return glm::perspective(glm::radians(zoom_), WIDTH / (float)HEIGHT, ZNEAR, ZFAR);
+    };
 
-  public:
-    float zoom_;
+  private:
+    glm::vec3 get_world_pos(const float &xpos, const float &ypos) {
+        GLint viewport[4] = {0, 0, WIDTH, HEIGHT};
+
+        glm::vec4 ndc;
+        ndc.x = 2 * (xpos - (float)viewport[0]) / (float)viewport[2] - 1.f;
+        ndc.y = 2 * (HEIGHT - ypos - (float)viewport[1]) / (float)viewport[3] - 1.f;
+        ndc.z = 1.f;
+        ndc.w = 1.f;
+
+        glm::mat4 inv_mvp = glm::inverse(get_projection() * get_view() * get_model());
+        glm::vec4 pos = inv_mvp * ndc;
+        pos /= pos.w;
+
+        return glm::vec3(pos);
+    }
 
   private:
     glm::vec3 pos_;
     glm::vec3 tar_;
 
-    double distance_;
+    float zoom_;
+
+    float distance_;
 
     glm::vec3 forward_;
     glm::vec3 left_;
@@ -103,6 +147,8 @@ class Controller {
 
     float last_x_;
     float last_y_;
+
+    glm::vec3 last_world_;
 
     float pitch_;
     float yaw_;

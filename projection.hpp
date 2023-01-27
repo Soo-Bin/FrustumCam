@@ -26,7 +26,7 @@ inline void run(vector<Object> objects, glm::mat4 mvp, int w, int h) {
 
     for (const auto obj : objects) {
         glm::vec4 pos(obj.pt, 1.f);
-        cout << "projection: " << glm::to_string(pos) << endl;
+        // cout << "projection: " << glm::to_string(pos) << endl;
         glm::vec4 ndc = mvp * pos;
         ndc /= ndc.w;
 
@@ -100,8 +100,8 @@ inline vector<GLfloat> introjection(glm::vec3 px, glm::mat4 mvp, int w, int h, f
     glm::vec4 pos = inv_mvp * ndc;
     pos /= pos.w;
 
-    cout << "introjection: " << glm::to_string(pos) << endl;
-    cout << "---" << endl;
+    // cout << "introjection: " << glm::to_string(pos) << endl;
+    // cout << "---" << endl;
 
     return vector<GLfloat>{pos.x, pos.y, pos.z};
 };

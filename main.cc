@@ -25,9 +25,6 @@ glm::vec3 offset;
 
 Controller control;
 
-const float width = 600;
-const float height = 600;
-
 void draw_grid_xz(Shader &shader, float size, float step);
 void draw_camera(Camera cam, glm::vec3 cam_color);
 void draw_object(Object obj, glm::vec3 obj_color);
@@ -36,7 +33,8 @@ void bind_line_opengl();
 void bind_point_opengl();
 
 void mouse_button_callback(GLFWwindow *window, int button, int action, int mods) {
-    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS ||
+        glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
         double xpos, ypos;
         glfwGetCursorPos(window, &xpos, &ypos);
         control.handle_mouse_button(xpos, ypos);
@@ -45,7 +43,9 @@ void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
 
 void mouse_cursor_callback(GLFWwindow *window, double xpos, double ypos) {
     if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
-        control.handle_mouse_movement(xpos, ypos);
+        control.handle_mouse_rotate(xpos, ypos);
+    else if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
+        control.handle_mouse_transpose(xpos, ypos);
 }
 
 void mouse_scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
@@ -124,7 +124,7 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     GLFWwindow *window;
-    window = glfwCreateWindow(width, height, "Viewer", NULL, NULL);
+    window = glfwCreateWindow(WIDTH, HEIGHT, "Viewer", NULL, NULL);
     if (!window) {
         glfwTerminate();
         exit(EXIT_FAILURE);
@@ -161,20 +161,9 @@ int main() {
         // glDepthMask(GL_TRUE);
 
         shader.use();
+        shader.set_mat4("mvp", control.get_projection() * control.get_view() * control.get_model());
+
         draw_grid_xz(shader, 10.f, 1.f);
-
-        glm::mat4 view = control.get_view();
-
-        float aspect = width / height;
-        float zNear = 0.5;
-        float zFar = 1000;
-
-        glm::mat4 proj = glm::perspective(glm::radians(control.zoom_), aspect, zNear, zFar);
-        glm::mat4 mode = glm::mat4(1.f);
-
-        glm::mat4 mvp = proj * view * mode;
-
-        shader.set_mat4("mvp", mvp);
 
         for (const auto &obj : objs)
             draw_object(obj, glm::vec3(1, 0, 1));
