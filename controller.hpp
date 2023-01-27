@@ -7,9 +7,6 @@
 
 #include <algorithm>
 
-#include <iostream>
-using namespace std;
-
 const float FOV = 45.f;
 const float SENSITIVITY = 0.1f;
 const float EPSILON = 0.00001f;
@@ -48,7 +45,7 @@ class Controller {
             // roll = glm::radians(atan2f(-mat[1][0], mat[0][0]));
             pitch_ = glm::degrees(atan2f(-mat[2][1], mat[2][2]));
         }
-        cout << "pitch: " << pitch_ << " and yaw: " << yaw_ << endl;
+        yaw_ = -yaw_;
     };
 
     void handle_mouse_button(const float &xpos, const float &ypos) {
@@ -57,8 +54,8 @@ class Controller {
     }
 
     void handle_mouse_movement(const float &xpos, const float &ypos) {
-        float xoffset = xpos - last_x_;
-        float yoffset = last_y_ - ypos;
+        float xoffset = last_x_ - xpos;
+        float yoffset = ypos - last_y_;
 
         last_x_ = xpos;
         last_y_ = ypos;
@@ -66,15 +63,15 @@ class Controller {
         xoffset *= SENSITIVITY;
         yoffset *= SENSITIVITY;
 
-        yaw_ -= xoffset;
-        pitch_ -= yoffset;
+        yaw_ += xoffset;
+        pitch_ += yoffset;
 
         pitch_ = std::min(pitch_, 89.f);
         pitch_ = std::max(pitch_, -89.f);
 
-        forward_.x = std::sin(glm::radians(yaw_)) * std::cos(glm::radians(pitch_));
+        forward_.x = std::cos(glm::radians(pitch_)) * std::sin(glm::radians(yaw_));
         forward_.y = std::sin(glm::radians(pitch_));
-        forward_.z = std::cos(glm::radians(yaw_)) * std::cos(glm::radians(pitch_));
+        forward_.z = std::cos(glm::radians(pitch_)) * std::cos(glm::radians(yaw_));
 
         forward_ = glm::normalize(forward_);
         left_ = glm::normalize(glm::cross(forward_, glm::vec3(0, 1, 0)));
@@ -85,7 +82,7 @@ class Controller {
 
     void handle_mouse_scroll(const float &yoffset) {
         zoom_ -= yoffset;
-        zoom_ = std::min(zoom_, 100.f);
+        zoom_ = std::min(zoom_, 1000.f);
         zoom_ = std::max(zoom_, 1.f);
     }
 

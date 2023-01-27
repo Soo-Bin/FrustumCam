@@ -12,7 +12,7 @@ class Camera {
     Camera(){};
     Camera(const int &id, const glm::vec3 pos, const glm::vec3 pry, const float &fov,
            const float &w, const float &h, const float &near, const float &far)
-        : id_(id), pos_(pos), pry_(pry) {
+        : id_(id), pos_(pos), pry_(pry), width_(w), height_(h), far_(far), near_(near) {
         pos_.z = -pos_.z;
 
         calc_front(5);
@@ -23,6 +23,7 @@ class Camera {
         mat_proj_ = glm::perspective(glm::radians(fov), w / h, near, far);
     };
 
+    glm::mat4 get_mvp() const { return mat_proj_ * mat_view_; };
     std::vector<GLfloat> get_pose() const { return std::vector<GLfloat>{pos_.x, pos_.y, pos_.z}; };
     std::vector<GLfloat> get_frustum() const {
         // reference :
@@ -68,11 +69,18 @@ class Camera {
   private:
     void calc_front(const double &distance) {
         // reference --> https://slideplayer.com/slide/16393785/
-        double x = -distance * sin(glm::radians(pry_.z));
-        double z = distance * cos(glm::radians(pry_.z));
+        double x = -distance * sin(glm::radians(-pry_.z));
+        double z = distance * cos(glm::radians(-pry_.z));
 
-        tar_ = glm::vec3(pos_.x + x, pos_.y, pos_.z + z);
+        tar_ = glm::vec3(pos_.x + x, pos_.y, pos_.z - z);
     };
+
+  public:
+    int width_;
+    int height_;
+
+    float far_;
+    float near_;
 
   private:
     int id_;

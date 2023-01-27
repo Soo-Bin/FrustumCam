@@ -13,6 +13,7 @@
 
 #include "camera.hpp"
 #include "controller.hpp"
+#include "projection.hpp"
 #include "shader.hpp"
 
 using namespace std;
@@ -20,6 +21,7 @@ using json = nlohmann::json;
 
 GLuint vao[2], vbo[2];
 vector<GLfloat> line, point;
+glm::vec3 offset;
 
 Controller control;
 
@@ -28,6 +30,7 @@ const float height = 600;
 
 void draw_grid_xz(Shader &shader, float size, float step);
 void draw_camera(Camera cam, glm::vec3 cam_color);
+void draw_object(Object obj, glm::vec3 obj_color);
 
 void bind_line_opengl();
 void bind_point_opengl();
@@ -49,7 +52,7 @@ void mouse_scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
     control.handle_mouse_scroll(yoffset);
 }
 
-vector<Camera> read_config(const std::string file) {
+vector<Camera> read_cam_config(const std::string file) {
     ifstream file_handler(file);
     if (!file_handler.is_open()) {
         cerr << "reading config json fail!" << endl;
@@ -63,7 +66,6 @@ vector<Camera> read_config(const std::string file) {
     file_handler.close();
 
     bool is_first = true;
-    glm::vec3 offset;
     vector<Camera> res;
     for (auto &j : json::parse(json_data)) {
         if (is_first) {
@@ -78,12 +80,34 @@ vector<Camera> read_config(const std::string file) {
     return res;
 }
 
+vector<Object> read_obj_config(const std::string file) {
+    ifstream file_handler(file);
+    if (!file_handler.is_open()) {
+        cerr << "reading config json fail!" << endl;
+        exit(EXIT_FAILURE);
+    }
+    string json_data;
+    std::ostringstream json_oss;
+    json_oss << file_handler.rdbuf();
+    json_data = json_oss.str();
+    file_handler.close();
+
+    vector<Object> res;
+    for (auto &j : json::parse(json_data)) {
+        glm::vec3 xyz(j["xyz"][0], j["xyz"][2], j["xyz"][1]);
+        res.push_back(Object(j["obj-id"], xyz - offset));
+    }
+    return res;
+}
+
 int main() {
-    vector<Camera> cams = read_config("../config/object.json");
+    vector<Camera> cams = read_cam_config("../config/cam.json");
     if (cams.empty()) {
         cerr << "no camera object!" << endl;
         exit(EXIT_FAILURE);
     }
+
+    vector<Object> objs = read_obj_config("../config/object.json");
 
     /**********************************************************/
     // OpenGL initialize
@@ -133,6 +157,9 @@ int main() {
     while (!glfwWindowShouldClose(window)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        // glEnable(GL_DEPTH_TEST);
+        // glDepthMask(GL_TRUE);
+
         shader.use();
         draw_grid_xz(shader, 10.f, 1.f);
 
@@ -149,8 +176,24 @@ int main() {
 
         shader.set_mat4("mvp", mvp);
 
-        for (const auto &cam : cams)
+        for (const auto &obj : objs)
+            draw_object(obj, glm::vec3(1, 0, 1));
+
+        for (const auto &cam : cams) {
             draw_camera(cam, glm::vec3(1, 0.647059, 0));
+            projection::run(objs, cam.get_mvp(), cam.width_, cam.height_);
+            float px_x = 1532.f;
+            float px_y = cam.height_ - 1055.f;
+            for (float z = 0; z <= 1.f; z += 0.1) {
+                vector<GLfloat> pose =
+                    projection::introjection(glm::vec3(px_x, z, px_y), cam.get_mvp(), cam.width_,
+                                             cam.height_, cam.far_, cam.near_);
+                pose.push_back(1);
+                pose.push_back(0.647059);
+                pose.push_back(0);
+                point.insert(point.end(), pose.begin(), pose.end());
+            }
+        }
 
         bind_line_opengl();
         bind_point_opengl();
@@ -236,4 +279,12 @@ void draw_camera(Camera cam, glm::vec3 cam_color) {
 
     vector<GLfloat> frustum = cam.get_frustum();
     line.insert(line.end(), frustum.begin(), frustum.end());
+}
+
+void draw_object(Object obj, glm::vec3 obj_color) {
+    vector<GLfloat> pose{obj.pt.x, obj.pt.y, obj.pt.z};
+    pose.push_back(obj_color.x);
+    pose.push_back(obj_color.y);
+    pose.push_back(obj_color.z);
+    point.insert(point.end(), pose.begin(), pose.end());
 }
