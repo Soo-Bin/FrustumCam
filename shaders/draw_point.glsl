@@ -20,8 +20,20 @@ void main()
 out vec4 FragColor;
 in vec3 in_color;
 
+float near = 0.5;
+float far = 20.0;
+
+float LinearizeDepth(float depth)
+{
+    float z = depth * 2.0 - 1.0;
+    return (2.0 * near * far) / (far + near - z * (far - near));
+}
+
 void main()
 {
     FragColor = vec4(in_color, 1.0);
+    
+    // float depth = LinearizeDepth(gl_FragCoord.z) / far;
+    // FragColor = vec4(vec3(depth), 1.0);
 }
 #endif
